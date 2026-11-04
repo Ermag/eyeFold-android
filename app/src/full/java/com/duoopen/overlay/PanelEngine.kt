@@ -90,6 +90,22 @@ class PanelEngine(
     private var bridging = false
     /** Live re-capture loop (Shizuku mode) is scheduled. */
     private var liveLoop = false
+    /** Bumped per [startLiveLoop]; a superseded loop's pending tick exits quietly. */
+    private var liveLoopId = 0
+    /**
+     * After a panel swap (Shizuku mode): still on the bridge, waiting for the
+     * panel to show a settled picture — the app redrawn, not the wallpaper or
+     * a half-black frame from mid-swap. See [offerSettling].
+     */
+    private var settling = false
+    private var settleSince = 0L
+    private var settleThumb: IntArray? = null
+    private var settleLast: Bitmap? = null
+    private val settleDeadline = Runnable {
+        val s = surface as? SnapshotSurface
+        val last = settleLast
+        if (settling && s != null && last != null) acceptSettled(s, last, "deadline")
+    }
     /**
      * Hinge angle at which this display took over the inner panel this fold
      * (NaN: unknown — use the learned swap angle). The inner picture is fully
@@ -177,7 +193,7 @@ class PanelEngine(
 
     /** Follow the hinge every frame: the lead on a fine sensor, the tracked glide between a sparse source's readings. */
     private fun followHinge(f: TiltFollower) {
-        f.tauS = if (hinge.externalActive) TiltFollower.FOLLOW_TAU_S else TiltFollower.DEFAULT_TAU_S
+        f.tauS = if (hinge.externalActive) TiltFollower.SPARSE_FOLLOW_TAU_S else TiltFollower.DEFAULT_TAU_S
         f.follow { now -> tiltFor(hinge.estimate(now)) }
     }
 
@@ -438,17 +454,89 @@ class PanelEngine(
     }
 
     private fun onCaptured(bitmap: Bitmap, afterSwap: Boolean, startTilt: Float?, t0: Long) {
-        cache.put(innerPanel, bitmap)
         if (bridging) {
             bridging = false
             val s = surface as? SnapshotSurface
             if (s != null && phase == Phase.SHOWING) {
-                Log.i(TAG, "display $displayId: fresh capture (${SystemClock.uptimeMillis() - t0}ms) replaces the bridge at tilt=${s.tilt}")
-                s.replaceSnapshot(bitmap)
+                Log.i(TAG, "display $displayId: fresh capture (${SystemClock.uptimeMillis() - t0}ms) at tilt=${s.tilt}")
+                if (shellCapture()) {
+                    // A panel that has just lit often still shows the wallpaper or
+                    // a half-drawn app; keep the bridge until it settles.
+                    settling = true
+                    settleSince = SystemClock.uptimeMillis()
+                    settleThumb = null
+                    handler.removeCallbacks(settleDeadline)
+                    handler.postDelayed(settleDeadline, SETTLE_FRAME_MAX_MS)
+                    offerSettling(s, bitmap)
+                    // The bridge's live loop died when this capture bumped
+                    // captureGen; restart it so the frame keeps following the panel.
+                    liveLoop = false
+                    startLiveLoop()
+                } else {
+                    cache.put(innerPanel, bitmap)
+                    s.replaceSnapshot(bitmap)
+                }
             }
             return
         }
+        cache.put(innerPanel, bitmap)
         present(bitmap, afterSwap, startTilt, t0)
+    }
+
+    /**
+     * While [settling]: takes [frame] once the panel looks settled — no big
+     * black band, and close to the frame before it — or at the deadline.
+     */
+    private fun offerSettling(s: SnapshotSurface, frame: Bitmap) {
+        settleLast = frame
+        val thumb = thumbnail(frame)
+        val prev = settleThumb
+        settleThumb = thumb
+        val stable = thumb == null || (!blackBanded(thumb) && prev != null && meanDiff(prev, thumb) < SETTLE_DIFF)
+        if (stable) acceptSettled(s, frame, "stable")
+        else if (SystemClock.uptimeMillis() - settleSince >= SETTLE_FRAME_MAX_MS) acceptSettled(s, frame, "deadline")
+    }
+
+    private fun acceptSettled(s: SnapshotSurface, frame: Bitmap, why: String) {
+        settling = false
+        settleThumb = null
+        settleLast = null
+        handler.removeCallbacks(settleDeadline)
+        if (frame.width == bounds().width() && frame.height == bounds().height()) cache.put(innerPanel, frame)
+        s.replaceSnapshot(frame)
+        Log.i(TAG, "display $displayId: settled picture replaces the bridge after ${SystemClock.uptimeMillis() - settleSince}ms ($why)")
+    }
+
+    private fun bounds() = windowManager.maximumWindowMetrics.bounds
+
+    private fun thumbnail(b: Bitmap): IntArray? {
+        if (b.isRecycled || b.config == Bitmap.Config.HARDWARE) return null
+        val t = Bitmap.createScaledBitmap(b, THUMB_W, THUMB_H, true)
+        val px = IntArray(THUMB_W * THUMB_H)
+        t.getPixels(px, 0, THUMB_W, 0, 0, THUMB_W, THUMB_H)
+        if (t !== b) t.recycle()
+        return px
+    }
+
+    /** A mid-swap frame: whole columns or rows of it still black. */
+    private fun blackBanded(px: IntArray): Boolean {
+        fun dark(c: Int) = ((c shr 16) and 0xFF) <= 8 && ((c shr 8) and 0xFF) <= 8 && (c and 0xFF) <= 8
+        val cols = (0 until THUMB_W).count { x -> (0 until THUMB_H).all { y -> dark(px[y * THUMB_W + x]) } }
+        val rows = (0 until THUMB_H).count { y -> (0 until THUMB_W).all { x -> dark(px[y * THUMB_W + x]) } }
+        return cols >= THUMB_W * 0.3f || rows >= THUMB_H * 0.3f
+    }
+
+    /** Mean absolute per-channel difference, 0–255. */
+    private fun meanDiff(a: IntArray, b: IntArray): Float {
+        var sum = 0L
+        for (i in a.indices) {
+            val x = a[i]
+            val y = b[i]
+            sum += kotlin.math.abs(((x shr 16) and 0xFF) - ((y shr 16) and 0xFF)) +
+                kotlin.math.abs(((x shr 8) and 0xFF) - ((y shr 8) and 0xFF)) +
+                kotlin.math.abs((x and 0xFF) - (y and 0xFF))
+        }
+        return sum / (a.size * 3f)
     }
 
     /**
@@ -593,8 +681,10 @@ class PanelEngine(
         if (liveLoop) return
         liveLoop = true
         val myGen = captureGen
+        val myLoop = ++liveLoopId
         var frames = 0
         fun tick() {
+            if (myLoop != liveLoopId) return
             if (!liveLoop || phase != Phase.SHOWING || myGen != captureGen) { liveLoop = false; return }
             val s = surface as? SnapshotSurface
             if (s == null || s.tilt < DuoShader.FLAT_EPSILON) { handler.postDelayed({ tick() }, LIVE_INTERVAL_MS); return }
@@ -603,7 +693,7 @@ class PanelEngine(
             scope.launch {
                 val frame = withContext(Dispatchers.IO) { ShizukuBridge.capture(displayId, excluded, LIVE_SHELL_SCALE) }
                 if (liveLoop && phase == Phase.SHOWING && myGen == captureGen && frame != null && !bridging) {
-                    (surface as? SnapshotSurface)?.replaceSnapshot(frame)
+                    (surface as? SnapshotSurface)?.let { s -> if (settling) offerSettling(s, frame) else s.replaceSnapshot(frame, crossfade = false) }
                     frames++
                     if (frames == 1 || frames % 25 == 0) Log.i(TAG, "display $displayId: live frame $frames (${frame.width}x${frame.height})")
                 }
@@ -616,6 +706,10 @@ class PanelEngine(
     private fun clearOverlayState() {
         liveLoop = false
         handler.removeCallbacks(settleCheck)
+        settling = false
+        settleThumb = null
+        settleLast = null
+        handler.removeCallbacks(settleDeadline)
         handler.removeCallbacks(peakHold)
         follower?.cancel()
         follower = null
@@ -706,6 +800,12 @@ class PanelEngine(
         const val INITIAL_SHELL_SCALE = 1f
         const val LIVE_SHELL_SCALE = 0.5f
         const val LIVE_INTERVAL_MS = 80L
+        /** Longest the bridge waits for a just-lit panel to settle before taking what it has. */
+        const val SETTLE_FRAME_MAX_MS = 450L
+        /** Two frames this close (mean per-channel, 0–255) count as settled. */
+        const val SETTLE_DIFF = 12f
+        const val THUMB_W = 32
+        const val THUMB_H = 24
         const val SHELL_RETRY_MS = 60L
 
         /**

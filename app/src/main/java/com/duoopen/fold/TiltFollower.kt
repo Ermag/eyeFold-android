@@ -93,6 +93,8 @@ class TiltFollower(private val onFrame: (value: Float) -> Unit) : Choreographer.
         const val DEFAULT_TAU_S = 0.045f
         /** Following a live estimate: it is already smooth, so only round off its corrections. */
         const val FOLLOW_TAU_S = 0.03f
+        /** Following a sparse external feed (Samsung's sensor log, a reading every ~5°): round off its steps a bit more. */
+        const val SPARSE_FOLLOW_TAU_S = 0.05f
         private const val SETTLED = 0.02f
     }
 }
