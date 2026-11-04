@@ -206,6 +206,14 @@ fun ControlSheet(
                 range = 0.02f..0.3f,
             )
             LabeledSlider(
+                label = "Crease frost",
+                hint = "Frost over the whole screen, crease included, that clears as it opens. 0 = crisp crease.",
+                valueText = "%.2f".format(config.creaseFrost),
+                value = config.creaseFrost,
+                onValueChange = { v -> DuoSettings.update { it.copy(creaseFrost = v) } },
+                range = 0f..1f,
+            )
+            LabeledSlider(
                 label = "Darkening",
                 hint = "How much the frosted glass dims what's behind it.",
                 valueText = "%.3f".format(config.darkening),

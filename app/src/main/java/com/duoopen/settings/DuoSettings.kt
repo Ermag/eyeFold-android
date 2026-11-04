@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * @param darkening Fraction of light lost per px of blur radius, authored at the
  *   original's 6 units/mm reference density (normalized per display at draw time).
  * @param eyeDistanceMm Viewer distance from the flat screen plane (perspective).
+ * @param creaseFrost Frost over the whole moving pane, crease included, that
+ *   clears with the fold (0–1). 0 = the glass model alone: crisp at the crease.
  * @param foldSplitsLong Whether the fold line splits the display's longer side.
  *   Learned from Jetpack WindowManager while the app is open, so the wallpaper
  *   (which can't query fold features) puts the hinge in the right place.
@@ -41,6 +43,7 @@ data class DuoConfig(
     val blurSpread: Float = 0.12f,
     val darkening: Float = 0.015f,
     val eyeDistanceMm: Float = 450f,
+    val creaseFrost: Float = 0.5f,
     val foldSplitsLong: Boolean = false,
     val movingSide: Int = -1,
     val coverFrostFromRight: Boolean = true,
@@ -66,6 +69,7 @@ object DuoSettings {
             blurSpread = prefs.getFloat("blurSpread", d.blurSpread),
             darkening = prefs.getFloat("darkening", d.darkening),
             eyeDistanceMm = prefs.getFloat("eyeDistanceMm", d.eyeDistanceMm),
+            creaseFrost = prefs.getFloat("creaseFrost", d.creaseFrost),
             foldSplitsLong = prefs.getBoolean("foldSplitsLong", d.foldSplitsLong),
             movingSide = prefs.getInt("movingSide", d.movingSide),
             coverFrostFromRight = prefs.getBoolean("coverFrostFromRight", d.coverFrostFromRight),
@@ -86,6 +90,7 @@ object DuoSettings {
             putFloat("blurSpread", next.blurSpread)
             putFloat("darkening", next.darkening)
             putFloat("eyeDistanceMm", next.eyeDistanceMm)
+            putFloat("creaseFrost", next.creaseFrost)
             putBoolean("foldSplitsLong", next.foldSplitsLong)
             putInt("movingSide", next.movingSide)
             putBoolean("coverFrostFromRight", next.coverFrostFromRight)

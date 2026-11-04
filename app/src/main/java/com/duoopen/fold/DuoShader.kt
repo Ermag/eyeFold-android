@@ -1,7 +1,10 @@
 package com.duoopen.fold
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.RuntimeShader
+import android.graphics.Shader
 import android.util.Log
 import com.duoopen.R
 import com.duoopen.settings.DuoConfig
@@ -45,6 +48,8 @@ object DuoShader {
 
     private const val TAG = "DuoShader"
     private const val REFERENCE_PX_PER_MM = 6f
+    /** Crease frost at full strength, as a fraction of the surface's short side (at sin(tilt) = 1). */
+    private const val BASE_FROST_FRACTION = 0.07f
 
     @Volatile
     private var source: String? = null
@@ -157,5 +162,27 @@ object DuoShader {
         // Blur radius is in device px; renormalize the per-px darkening from the
         // original's ~6 px/mm so dense panels don't crush to black.
         shader.setFloatUniform("darkening", config.darkening * REFERENCE_PX_PER_MM / pxPerMm)
+        shader.setFloatUniform("baseBlurPx", config.creaseFrost * BASE_FROST_FRACTION * minOf(width, height))
+        // No pre-blurred copies unless the caller adds them (setPrefiltered).
+        shader.setInputShader("blurA", noImage)
+        shader.setInputShader("blurB", noImage)
+        shader.setFloatUniform("texelA", 0f)
+        shader.setFloatUniform("texelB", 0f)
+    }
+
+    /**
+     * Pre-blurred copies of `content` (same coordinates), each [texelA] /
+     * [texelB] view px per texel, with B the coarser. Call after [setUniforms].
+     */
+    fun setPrefiltered(shader: RuntimeShader, blurA: Shader, texelA: Float, blurB: Shader, texelB: Float) {
+        shader.setInputShader("blurA", blurA)
+        shader.setInputShader("blurB", blurB)
+        shader.setFloatUniform("texelA", texelA)
+        shader.setFloatUniform("texelB", texelB)
+    }
+
+    /** Stand-in for unused shader inputs; never sampled while its texel uniform is 0. */
+    private val noImage: Shader by lazy {
+        BitmapShader(Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888), Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
     }
 }

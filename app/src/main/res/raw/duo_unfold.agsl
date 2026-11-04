@@ -11,7 +11,9 @@
 //   moving (paneSide = 0) each pane tilts (180 - A) / 2.
 // - Per pixel: ray eye -> glass point, continued to the UI plane; Vogel-disk
 //   blur with radius proportional to the glass-to-plane gap, dimmed in
-//   proportion to how much it scatters. A fully-missed kernel is black.
+//   proportion to how much it scatters. Past the UI's edge the nearest edge is
+//   sampled and faded out (glass catching less light toward its rim) instead
+//   of cutting to black.
 //
 // Uniforms:
 // - tiltDegrees: per-pane tilt, 0 = flat (effect off).
@@ -20,13 +22,25 @@
 // - paneSide: which half moves: -1 = left (top), +1 = right (bottom), 0 = both.
 //   The still half renders crisp.
 // - blurSpread: blur radius gained per px of glass/plane separation.
-// - darkening: fraction of light lost per px of blur radius.
+// - darkening: fraction of light lost per px of blur radius, taken at the
+//   pane's midpoint so the whole pane dims evenly (per-pixel dimming leaves
+//   the barely-blurred crease as a bright band).
+// - baseBlurPx: blur over the whole moving pane, crease included, scaled by
+//   sin(tilt) so it clears with the fold (0 = frost from the crease out only).
+// - blurA / blurB: `content` pre-blurred (downscaled) copies, in the same
+//   coordinates; texelA / texelB: view px per texel of each (0 = no copies,
+//   sharp taps only). Once the radius spans a few texels of a copy the taps
+//   move onto it, so wide frost averages already-smooth input — no grain.
 //
 // NOTE: minimal AGSL constructs on purpose (no break/continue, no bool locals,
 // no helper functions) — same constraint the original documents for on-device
 // compilers.
 
 uniform shader content;
+uniform shader blurA;
+uniform shader blurB;
+uniform float texelA;
+uniform float texelB;
 uniform float2 resolution;
 uniform float tiltDegrees;
 uniform float eyeDistancePx;
@@ -36,6 +50,7 @@ uniform float axisSwap;
 uniform float paneSide;
 uniform float blurSpread;
 uniform float darkening;
+uniform float baseBlurPx;
 
 const float GOLDEN_ANGLE = 2.39996322972865332; // radians, Vogel disk spacing
 const float TWO_PI = 6.28318530717958648;
@@ -71,38 +86,78 @@ half4 main(float2 fragCoord) {
     }
     float2 hitS = eye + (glass - eye) * (eyeDistancePx / depth);
 
-    float radius = blurSpread * gap;
+    float radius = blurSpread * gap + baseBlurPx * sin(tilt);
 
-    // Whole blur kernel misses the UI: black.
-    if (hitS.x < -radius || hitS.y < -radius ||
-        hitS.x > size.x + radius || hitS.y > size.y + radius) {
+    // Past the UI's edge: sample the nearest edge and fade it out rather than
+    // cut to black, over a band that widens with the blur.
+    float2 inside = clamp(hitS, float2(0.0), size);
+    float outside = length(hitS - inside);
+    float edgeFade = 1.0 - smoothstep(0.0, max(radius * 2.0, size.x * 0.12), outside);
+    if (edgeFade <= 0.0) {
         return half4(0.0, 0.0, 0.0, 1.0);
     }
 
-    float2 hit = mix(hitS, hitS.yx, axisSwap);
+    float2 hit = mix(inside, inside.yx, axisSwap);
 
-    // Frosted glass absorbs: dim in proportion to how much it scatters.
-    float atten = max(1.0 - darkening * radius, 0.0);
+    // Frosted glass absorbs: dim in proportion to how much the pane scatters,
+    // evenly across it.
+    float paneW = mix(hingePos, size.x - hingePos, step(0.0, side));
+    float midRadius = blurSpread * 0.5 * paneW * sin(tilt) + baseBlurPx * sin(tilt);
+    float atten = max(1.0 - darkening * midRadius, 0.0) * edgeFade;
 
     if (radius < 0.5) {
         return half4(content.eval(hit).rgb * half(atten), 1.0);
     }
 
-    // Vogel disk with per-pixel rotation (banding becomes frosted-glass grain).
-    // Fixed 32-iteration loop with a weight mask (no break) keeps frames cheap
-    // near the hinge and compiles everywhere.
-    float tapsF = clamp(radius * 2.0, 6.0, 32.0);
-    float rotation = fract(sin(dot(fragCoord, float2(12.9898, 78.233))) * 43758.5453) * TWO_PI;
-    half3 sum = half3(0.0);
-    float wsum = 0.0;
-    for (int i = 0; i < 32; i++) {
-        float fi = float(i);
-        float w = 1.0 - step(tapsF, fi);
-        float r = radius * sqrt((fi + 0.5) / tapsF);
-        float a = fi * GOLDEN_ANGLE + rotation;
-        sum += content.eval(hit + r * float2(cos(a), sin(a))).rgb * half(w);
-        wsum += w;
+    // How much of the kernel runs on each pre-blurred copy (none without them).
+    float wA = 0.0;
+    float wB = 0.0;
+    if (texelA > 0.0) {
+        wA = smoothstep(1.5 * texelA, 3.0 * texelA, radius);
+        wB = smoothstep(1.5 * texelB, 3.0 * texelB, radius);
     }
-    half3 avg = sum / half(max(wsum, 1.0));
-    return half4(avg * half(atten), 1.0);
+    float wSharp = 1.0 - wA;
+    wA = wA - wB;
+
+    // Vogel disk with per-pixel rotation (banding becomes frosted-glass grain).
+    // Fixed-count loops with a weight mask (no break) keep frames cheap near
+    // the hinge and compile everywhere.
+    float rotation = fract(sin(dot(fragCoord, float2(12.9898, 78.233))) * 43758.5453) * TWO_PI;
+    half3 total = half3(0.0);
+    if (wSharp > 0.001) {
+        float tapsF = clamp(radius * 2.0, 6.0, 32.0);
+        half3 sum = half3(0.0);
+        float wsum = 0.0;
+        for (int i = 0; i < 32; i++) {
+            float fi = float(i);
+            float w = 1.0 - step(tapsF, fi);
+            float r = radius * sqrt((fi + 0.5) / tapsF);
+            float a = fi * GOLDEN_ANGLE + rotation;
+            sum += content.eval(hit + r * float2(cos(a), sin(a))).rgb * half(w);
+            wsum += w;
+        }
+        total += sum * half(wSharp / max(wsum, 1.0));
+    }
+    // The copies are already smooth, so 12 taps cover any radius.
+    if (wA > 0.001) {
+        half3 sumA = half3(0.0);
+        for (int i = 0; i < 12; i++) {
+            float fi = float(i);
+            float r = radius * sqrt((fi + 0.5) / 12.0);
+            float a = fi * GOLDEN_ANGLE + rotation;
+            sumA += blurA.eval(hit + r * float2(cos(a), sin(a))).rgb;
+        }
+        total += sumA * half(wA / 12.0);
+    }
+    if (wB > 0.001) {
+        half3 sumB = half3(0.0);
+        for (int i = 0; i < 12; i++) {
+            float fi = float(i);
+            float r = radius * sqrt((fi + 0.5) / 12.0);
+            float a = fi * GOLDEN_ANGLE + rotation;
+            sumB += blurB.eval(hit + r * float2(cos(a), sin(a))).rgb;
+        }
+        total += sumB * half(wB / 12.0);
+    }
+    return half4(total * half(atten), 1.0);
 }

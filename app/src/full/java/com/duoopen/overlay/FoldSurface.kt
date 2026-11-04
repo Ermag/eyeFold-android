@@ -82,7 +82,7 @@ class SnapshotSurface(
         }
 
     /** Swap a stale bridging picture for the fresh capture, keeping the current tilt. */
-    fun replaceSnapshot(bitmap: Bitmap) = view.setSnapshot(bitmap)
+    fun replaceSnapshot(bitmap: Bitmap, crossfade: Boolean = true) = view.setSnapshot(bitmap, crossfade)
 
     override fun fadeIn(durationMs: Long) {
         view.alpha = 0f
