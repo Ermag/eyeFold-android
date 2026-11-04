@@ -1,4 +1,4 @@
 <resources>
-    <string name="accessibility_name">Duo Open full-screen fold</string>
+    <string name="accessibility_name">eyeFold full-screen fold</string>
     <string name="accessibility_description">Plays the frosted-glass fold over the whole screen when you open the phone. Takes one screenshot per unfold to draw the effect; nothing is stored or sent anywhere.</string>
 </resources>

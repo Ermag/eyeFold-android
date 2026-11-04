@@ -117,7 +117,7 @@ fun ControlSheet(
                         Text("Whole screen", style = MaterialTheme.typography.titleSmall)
                         Hint(
                             if (overlayEnabled) "On. Folds everything — your wallpaper, icons, lock screen, open apps."
-                            else "Off. Needs the accessibility service “Duo Open full-screen fold”.",
+                            else "Off. Needs the accessibility service “eyeFold full-screen fold”.",
                         )
                     }
                     if (overlayEnabled) {
@@ -286,7 +286,7 @@ fun ControlSheet(
                 Divider()
                 Section(
                     "Shizuku mode (optional)",
-                    "Shizuku gives apps ADB-level helpers without root. With it, Duo Open captures the screen " +
+                    "Shizuku gives apps ADB-level helpers without root. With it, eyeFold captures the screen " +
                         "with no rate limit and keeps the picture under the frost live, and on Samsung foldables " +
                         "reads the real hinge angle (from the system's own sensor log) instead of just 0° / 90° / 180°.",
                 )

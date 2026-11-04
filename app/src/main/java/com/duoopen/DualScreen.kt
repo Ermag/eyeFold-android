@@ -119,7 +119,7 @@ class DualScreen(private val activity: ComponentActivity) {
         )
         addView(
             TextView(context).apply {
-                text = "Duo Open\n\nBoth screens are on.\nFold the phone."
+                text = "eyeFold\n\nBoth screens are on.\nFold the phone."
                 setTextColor(Color.WHITE)
                 textSize = 26f
                 gravity = Gravity.CENTER

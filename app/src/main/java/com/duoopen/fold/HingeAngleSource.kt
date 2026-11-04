@@ -278,7 +278,7 @@ class HingeAngleSource(
 
     /** Full dump for a bug report: every fold-related sensor and what it did. */
     fun report(): String = buildString {
-        appendLine("Duo Open hinge sensor report")
+        appendLine("eyeFold hinge sensor report")
         appendLine("device=${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE}) android=${Build.VERSION.RELEASE}")
         appendLine("active=${activeSensor?.name ?: "none"} coarse=$isCoarse stopsOnly=$stopsOnly canFollow=$canFollow rate=${"%.1f".format(rateHz)}Hz")
         appendLine("external: active=$externalActive running=$externalFeedRunning")

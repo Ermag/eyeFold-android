@@ -37,11 +37,11 @@ fun SetupGuide(onOpenAccessibility: () -> Unit, onDismiss: () -> Unit) {
                 Text(
                     "Android blocks Accessibility for apps installed from a file until you allow it " +
                         "(it's the permission banking malware abuses, so every sideloaded app gets the warning). " +
-                        "Duo Open asks for no other permission and has no network access.",
+                        "eyeFold asks for no other permission and has no network access.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.height(12.dp))
-                Step(1, "In Accessibility, tap “Duo Open full-screen fold” once so Android shows the “restricted setting” message.")
+                Step(1, "In Accessibility, tap “eyeFold full-screen fold” once so Android shows the “restricted setting” message.")
                 Step(2, "Open this app's info page (button below) → ⋮ menu at the top right → Allow restricted settings. Confirm with your PIN.")
                 Step(3, "Back in Accessibility, turn the toggle on.")
                 if (samsung) {

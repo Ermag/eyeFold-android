@@ -1,4 +1,18 @@
-# Duo Open
+# eyeFold
+
+A fork of [marcoazeem/duo-open](https://github.com/marcoazeem/duo-open),
+tuned on a Galaxy Z Fold 8 (Shizuku mode). Changes from upstream:
+
+- Live frames under the frost no longer freeze after an unfold, and the
+  first picture on the inner panel waits for the app to redraw (no
+  wallpaper or half-black frames from mid-swap).
+- Smoother frost: pre-blurred copies for wide blur, a short crossfade
+  between pictures, soft edges instead of black, even dimming across each
+  pane, and a **Crease frost** setting so the crease is frosted too.
+- The frost holds wherever the hinge rests; **Clear frost on pause**
+  brings back the old fade-out.
+
+Everything below is upstream's documentation, with the app name updated.
 
 The iPhone "Duo" frosted-glass fold, playing system-wide on a book-style
 foldable as you open and close it. Driven by the real hinge angle — no root.
@@ -107,11 +121,11 @@ Two editions on the [Releases](../../releases) page:
 Full edition:
 
 1. Download `DuoOpen-<version>.apk` and install it.
-2. Open **Duo Open** → **Tune** → **Turn on in Accessibility** → enable
-   *Duo Open full-screen fold*.
+2. Open **eyeFold** → **Tune** → **Turn on in Accessibility** → enable
+   *eyeFold full-screen fold*.
    - Android 13+ blocks accessibility for sideloaded apps until you allow
      it. If the toggle is greyed out: tap it once so Android refuses you,
-     then go to *Settings → Apps → Duo Open → ⋮ (top right) → Allow
+     then go to *Settings → Apps → eyeFold → ⋮ (top right) → Allow
      restricted settings* and try again. **Tune → Toggle greyed out?** walks
      through it with deep links.
    - Samsung: turn off *Settings → Security and privacy → Auto Blocker*
@@ -149,8 +163,8 @@ Samsung continuous angle it also tails the system log, but only for two
 tags: the sensor HAL's (`sensors-hal`), of which it parses just the two
 hinge sensors' readings and the hall sensor's shut/open line, and Samsung's
 fold wallpaper (`SprWallpaper|FoldInteractive`), of which it parses just the
-replies to Duo Open's own pings. Nothing else is read. Both helpers exit when
-the service stops, and none of it runs unless you authorise Duo Open in
+replies to eyeFold's own pings. Nothing else is read. Both helpers exit when
+the service stops, and none of it runs unless you authorise eyeFold in
 Shizuku.
 
 Without Shizuku the service also listens to the system's fold posture
@@ -316,10 +330,10 @@ Other takes on the same idea, useful for comparing approaches:
 
 [Shizuku](https://shizuku.rikka.app/) lends apps ADB-level helpers without
 root (you start it once per boot over wireless debugging or a computer).
-When Duo Open is authorised in Shizuku, **Tune → Shizuku mode** offers:
+When eyeFold is authorised in Shizuku, **Tune → Shizuku mode** offers:
 
 - **Fast live capture.** The screen is captured through a shell-side helper
-  using the hidden WindowManager display capture, with Duo Open's own overlay
+  using the hidden WindowManager display capture, with eyeFold's own overlay
   excluded — no one-per-333 ms limit, ~50 ms even on a panel that has just
   switched on, and the picture under the frost is re-captured at ~12 fps so
   it stays *live* instead of frozen.
@@ -331,7 +345,7 @@ When Duo Open is authorised in Shizuku, **Tune → Shizuku mode** offers:
   sampled), over the whole fold and whatever is on screen. The shell helper
   reads just those lines and the fold tracks your hand, with nothing else to
   set up. If Samsung's built-in "Fold interactive" home wallpaper is set as
-  well, Duo Open also pings it ~30×/s and takes its 1° readings while it is
+  well, eyeFold also pings it ~30×/s and takes its 1° readings while it is
   visible, dropping back to the sensor log the moment an app covers it.
 
 The capture and the wallpaper angle were worked out by **Duo Fold Live**,
@@ -341,6 +355,8 @@ to the accessibility screenshot, the public sensor and the fold posture.
 
 ## Credits
 
+- **[marcoazeem/duo-open](https://github.com/marcoazeem/duo-open)** (MIT) —
+  the app this fork is built on.
 - **[Atomicx7/Duo-animation](https://github.com/Atomicx7/Duo-animation)** —
   the frosted-glass fold shader (Metal → AGSL port) this project started from.
 - **[joeconsorti/duo-fold-live](https://github.com/joeconsorti/duo-fold-live)**

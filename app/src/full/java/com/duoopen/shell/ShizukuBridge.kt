@@ -26,8 +26,8 @@ object ShizukuBridge {
     sealed class State(val summary: String) {
         object NotInstalled : State("Shizuku isn't installed.")
         object NotRunning : State("Shizuku is installed but not running. Start it (wireless debugging or a computer), then come back.")
-        object NeedsPermission : State("Shizuku is running. Authorise Duo Open to use it.")
-        object Denied : State("Shizuku access was declined. Enable Duo Open under Shizuku → Authorised applications.")
+        object NeedsPermission : State("Shizuku is running. Authorise eyeFold to use it.")
+        object Denied : State("Shizuku access was declined. Enable eyeFold under Shizuku → Authorised applications.")
         class Ready(val uid: Int, val capture: String?) : State(
             if (capture == null || capture.startsWith("unavailable")) "Shizuku ready (uid $uid); display capture ${capture ?: "unknown"}."
             else "Shizuku ready (uid $uid); fast display capture via $capture.",
