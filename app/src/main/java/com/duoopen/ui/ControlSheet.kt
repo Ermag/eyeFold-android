@@ -184,6 +184,20 @@ fun ControlSheet(
                         enabled = !(config.liveBlur && liveBlurSupported),
                     )
                 }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Clear frost on pause", style = MaterialTheme.typography.titleSmall)
+                        Hint(
+                            "When the hinge stops mid-fold for ~0.7 s, fade the frost out so the live screen shows; " +
+                                "it comes back as you keep folding. Off: the frost stays wherever the hinge rests.",
+                        )
+                    }
+                    Switch(
+                        checked = config.clearOnPause,
+                        onCheckedChange = { v -> DuoSettings.update { it.copy(clearOnPause = v) } },
+                    )
+                }
             }
 
             // 3. Look ---------------------------------------------------------

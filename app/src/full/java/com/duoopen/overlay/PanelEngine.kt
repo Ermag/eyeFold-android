@@ -33,8 +33,10 @@ import kotlinx.coroutines.withContext
  * Opening: leaving closed → capture on the cover → frost sweeps in; the inner
  * panel lights up → capture (retried while the panel is still black) → frost
  * clears to flat. Closing is the reverse. A frozen snapshot for the fraction
- * of a second of a fold is invisible in practice; if the hinge stops partway
- * (tent) the overlay fades out so live content isn't hidden.
+ * of a second of a fold is invisible in practice. While the hinge is followed
+ * the frost holds wherever it rests, unless "Clear frost on pause" is on;
+ * a timed ease (stops-only sensor) always fades out at its peak so live
+ * content isn't hidden.
  *
  * On a stops-only hinge sensor (Galaxy Z Fold 7 and earlier: 0/90/180) the
  * overlay can't follow the hinge, so each stop change plays a timed ease
@@ -121,6 +123,7 @@ class PanelEngine(
 
     val showing: Boolean get() = phase == Phase.SHOWING
 
+    /** "Clear frost on pause": drops the overlay once the followed hinge rests. */
     private val settleCheck = object : Runnable {
         override fun run() {
             val o = surface ?: return
@@ -209,8 +212,7 @@ class PanelEngine(
             Log.i(TAG, "display $displayId: continuous angle $angle mid-ease; following")
             timedResolve = false
             handler.removeCallbacks(peakHold)
-            handler.removeCallbacks(settleCheck)
-            handler.postDelayed(settleCheck, SETTLE_TIMEOUT_MS)
+            armSettleCheck()
         }
         if (tilt < DuoShader.FLAT_EPSILON && phase == Phase.SHOWING && !demoRunning) {
             if (timedResolve && f != null && f.target < DuoShader.FLAT_EPSILON) {
@@ -653,9 +655,16 @@ class PanelEngine(
                 handler.postDelayed(peakHold, if (hinge.isCoarse) COARSE_PEAK_HOLD_MS else PEAK_HOLD_MS)
             }
         } else {
+            // Following the hinge: the frost holds wherever the hinge rests
+            // and clears as it opens, unless "Clear frost on pause" is on.
             if (hinge.canFollow && !demoRunning) followHinge(f)
-            handler.postDelayed(settleCheck, SETTLE_TIMEOUT_MS)
+            armSettleCheck()
         }
+    }
+
+    private fun armSettleCheck() {
+        handler.removeCallbacks(settleCheck)
+        if (DuoSettings.config.value.clearOnPause) handler.postDelayed(settleCheck, SETTLE_TIMEOUT_MS)
     }
 
     private fun dismiss(fadeMs: Long) {

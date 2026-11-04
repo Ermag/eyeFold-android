@@ -31,6 +31,9 @@ import kotlinx.coroutines.flow.asStateFlow
  * @param instantStart After a panel switches on, start the whole-screen fold
  *   at once from that panel's last picture and swap in the fresh capture when
  *   it lands (~0.3 s), instead of showing nothing until then.
+ * @param clearOnPause While the hinge angle is followed, drop the frost once
+ *   the hinge rests mid-fold (~0.7 s) so the live screen shows; it returns when
+ *   the hinge moves on. Off: the frost holds wherever the hinge stops.
  * @param shizukuCapture With Shizuku authorised, capture through the shell
  *   helper (no rate limit, live frames under the frost) instead of the
  *   accessibility screenshot.
@@ -49,6 +52,7 @@ data class DuoConfig(
     val coverFrostFromRight: Boolean = true,
     val liveBlur: Boolean = false,
     val instantStart: Boolean = true,
+    val clearOnPause: Boolean = false,
     val shizukuCapture: Boolean = true,
     val shizukuAngle: Boolean = true,
     val imageVersion: Long = 0L,
@@ -75,6 +79,7 @@ object DuoSettings {
             coverFrostFromRight = prefs.getBoolean("coverFrostFromRight", d.coverFrostFromRight),
             liveBlur = prefs.getBoolean("liveBlur", d.liveBlur),
             instantStart = prefs.getBoolean("instantStart", d.instantStart),
+            clearOnPause = prefs.getBoolean("clearOnPause", d.clearOnPause),
             shizukuCapture = prefs.getBoolean("shizukuCapture", d.shizukuCapture),
             shizukuAngle = prefs.getBoolean("shizukuAngle", d.shizukuAngle),
             imageVersion = prefs.getLong("imageVersion", d.imageVersion),
@@ -96,6 +101,7 @@ object DuoSettings {
             putBoolean("coverFrostFromRight", next.coverFrostFromRight)
             putBoolean("liveBlur", next.liveBlur)
             putBoolean("instantStart", next.instantStart)
+            putBoolean("clearOnPause", next.clearOnPause)
             putBoolean("shizukuCapture", next.shizukuCapture)
             putBoolean("shizukuAngle", next.shizukuAngle)
             putLong("imageVersion", next.imageVersion)
