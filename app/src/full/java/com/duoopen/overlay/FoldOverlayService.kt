@@ -84,6 +84,7 @@ class FoldOverlayService : AccessibilityService() {
             hinge.deviceStates = it.supportedStates
         }
         ShizukuBridge.init(this)
+        ShizukuBridge.autoReconnect = true
         angleFeed = SamsungAngleFeed(this, handler, hinge)
         scope.launch { ShizukuBridge.state.collect { syncAngleFeed() } }
         scope.launch { DuoSettings.config.collect { syncAngleFeed() } }
@@ -93,6 +94,7 @@ class FoldOverlayService : AccessibilityService() {
 
     override fun onDestroy() {
         instance = null
+        ShizukuBridge.autoReconnect = false
         angleFeed?.stop()
         deviceState?.stop()
         if (receiverRegistered) unregisterReceiver(demoReceiver)

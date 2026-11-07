@@ -2,12 +2,15 @@ package com.duoopen.shell
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.ServiceConnection
 import android.graphics.Bitmap
 import android.os.Binder
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.Parcel
 import android.util.Log
 import android.view.SurfaceControl
@@ -36,6 +39,10 @@ object ShizukuBridge {
 
     private const val TAG = "DuoShizuku"
     private const val REQUEST_CODE = 7311
+    private const val POKE_FIRST_MS = 5_000L
+    private const val POKE_MAX_MS = 60_000L
+    private const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
+    private const val REQUEST_BINDER = "rikka.shizuku.intent.action.REQUEST_BINDER"
 
     private val _state = MutableStateFlow<State>(State.NotInstalled)
     val state: StateFlow<State> = _state.asStateFlow()
@@ -63,7 +70,7 @@ object ShizukuBridge {
     }
 
     private val binderListener = Shizuku.OnBinderReceivedListener { refresh() }
-    private val deadListener = Shizuku.OnBinderDeadListener { service = null; refresh() }
+    private val deadListener = Shizuku.OnBinderDeadListener { service = null; binding = false; refresh() }
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { _, result ->
         refresh()
         if (result == PackageManager.PERMISSION_GRANTED) bind()
@@ -81,7 +88,7 @@ object ShizukuBridge {
     }
 
     val installed: Boolean
-        get() = runCatching { appContext.packageManager.getPackageInfo("moe.shizuku.privileged.api", 0); true }.getOrDefault(false)
+        get() = runCatching { appContext.packageManager.getPackageInfo(SHIZUKU_PACKAGE, 0); true }.getOrDefault(false)
 
     val ready: Boolean get() = state.value is State.Ready && service != null
 
@@ -100,6 +107,68 @@ object ShizukuBridge {
             }
         }.getOrElse { State.NotRunning }
         _state.value = next
+        main.post { schedulePoke() }
+    }
+
+    /**
+     * While true (the overlay service is running), a stopped Shizuku is
+     * re-checked with [poke] at growing intervals, so eyeFold reconnects on
+     * its own once Shizuku is started again.
+     */
+    var autoReconnect = false
+        set(value) {
+            field = value
+            main.post { schedulePoke() }
+        }
+
+    private val main = Handler(Looper.getMainLooper())
+    private var pokeDelayMs = POKE_FIRST_MS
+    private val pokeTask = Runnable {
+        poke()
+        pokeDelayMs = (pokeDelayMs * 2).coerceAtMost(POKE_MAX_MS)
+        schedulePoke()
+    }
+
+    private fun schedulePoke() {
+        val want = autoReconnect && state.value is State.NotRunning && installed
+        if (!want) {
+            main.removeCallbacks(pokeTask)
+            pokeDelayMs = POKE_FIRST_MS
+        } else if (!main.hasCallbacks(pokeTask)) {
+            main.postDelayed(pokeTask, pokeDelayMs)
+        }
+    }
+
+    /**
+     * A restarted Shizuku server pushes its binder only to the Shizuku app and
+     * to apps that come to the foreground, so a running accessibility service
+     * never hears back. Ask the Shizuku app for it instead, over the
+     * REQUEST_BINDER broadcast its `rish` shell uses; it answers through
+     * [binderReply] with the server's binder, or null while the server is
+     * stopped. Calls on that binder are still checked against our grant.
+     */
+    private fun poke() {
+        val data = Bundle().apply { putBinder("binder", binderReply) }
+        runCatching {
+            appContext.sendBroadcast(
+                Intent(REQUEST_BINDER).setPackage(SHIZUKU_PACKAGE).putExtra("data", data),
+            )
+        }.onFailure { Log.w(TAG, "binder request: ${it.message}") }
+    }
+
+    private val binderReply = object : Binder() {
+        override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
+            if (code != 1) return super.onTransact(code, data, reply, flags)
+            val fromShizuku = runCatching {
+                appContext.packageManager.getPackagesForUid(Binder.getCallingUid())?.contains(SHIZUKU_PACKAGE) == true
+            }.getOrDefault(false)
+            val binder = data.readStrongBinder()
+            if (fromShizuku && binder != null && binder.pingBinder()) {
+                Log.i(TAG, "binder received from the Shizuku app")
+                main.post { if (!Shizuku.pingBinder()) Shizuku.onBinderReceived(binder, appContext.packageName) }
+            }
+            return true
+        }
     }
 
     fun requestPermission() {
